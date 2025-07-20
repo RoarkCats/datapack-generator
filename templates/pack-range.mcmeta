@@ -1,6 +1,10 @@
 {
     "pack": {
         "pack_format": %format%,
+		"supported_formats": {
+			"min_inclusive": %min_format%,
+			"max_inclusive": %format%
+		},
         "description": "By %author%"
     }
 }

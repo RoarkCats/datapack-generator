@@ -4,40 +4,102 @@ import (
 	"embed"
 	"fmt"
 	"os"
+	"strconv"
 	s "strings"
 )
 
 //go:embed templates/*
 var templates embed.FS
 
+// Gets text content from embedded template file
+func getTemplate(file string) (text string) {
+	data, err := templates.ReadFile("templates/" + file)
+	Check(err)
+	return string(data)
+}
+
 var version = "2.0.0"
 
 func main() {
-	fmt.Printf("\n  -- Welcome to Datapack Generator %s by RoarkCats --\n", version)
+	fmt.Printf("\n  -- Welcome to Datapack Generator %s by RoarkCats --\n\n", version)
 
+	// --- Get datapack info
 	pack_name := Input("  Datapack Name: ")
 	pack_namespace := Input("  Datapack Namespace: ")
 	pack_author := Input("  Datapack Author: ")
-	pack_ver := getVer()
-	if pack_ver < 18 && s.ToLower(Input("  Import Rng? (y/n) ")) == "y" {
-		// make rng
-	}
-	fmt.Printf("%s %s %s %d", pack_name, pack_namespace, pack_author, pack_ver)
+	pack_ver := getVer(Input("  Version: "))
 
-	dat, err := os.ReadFile("./wah.txt")
-	if err != nil {
-		// panic(err)
-	} else {
-		fmt.Println(string(dat))
+	pack_ver_min := 0
+	if pack_ver >= 18 {
+		inp := Input("  Supported Version Range? : ")
+		if inp != "" {
+			pack_ver_min = getVer(inp)
+			if pack_ver_min > pack_ver {
+				pack_ver, pack_ver_min = pack_ver_min, pack_ver
+			}
+		}
 	}
+
+	// --- Create folders
+	_s := "" // legacy folder name support
+	if pack_ver < 48 {
+		_s = "s"
+	}
+	Check(os.MkdirAll(pack_name+"/data/"+pack_namespace+"/function"+_s, 0755))
+	Check(os.MkdirAll(pack_name+"/data/minecraft/tags/function"+_s, 0755))
+
+	// --- Create files from templates
+	fillTemplate := func(template string) string {
+		template = s.ReplaceAll(template, "%name%", pack_name)
+		template = s.ReplaceAll(template, "%namespace%", pack_namespace)
+		template = s.ReplaceAll(template, "%author%", pack_author)
+		template = s.ReplaceAll(template, "%format%", strconv.Itoa(pack_ver))
+		template = s.ReplaceAll(template, "%min_format%", strconv.Itoa(pack_ver_min))
+		return template
+	} // helper funcs to get, fill, and write templates
+	makePackTemplate := func(filedir string, template string) {
+		Check(os.WriteFile(pack_name+"/"+filedir, []byte(fillTemplate(getTemplate(template))), 0644))
+	}
+	makePackTemplate("data/minecraft/tags/function"+_s+"/load.json", "load.json")
+	makePackTemplate("data/minecraft/tags/function"+_s+"/tick.json", "tick.json")
+	makePackTemplate("data/"+pack_namespace+"/function"+_s+"/load.mcfunction", "load.mcfunction")
+	makePackTemplate("data/"+pack_namespace+"/function"+_s+"/main.mcfunction", "main.mcfunction")
+
+	// --- New mcmeta formats
+	if pack_ver_min == 0 {
+		makePackTemplate("pack.mcmeta", "pack.mcmeta")
+	} else {
+		makePackTemplate("pack.mcmeta", "pack-range.mcmeta")
+	}
+
+	// --- Import legacy RNG
+	if pack_ver < 18 && s.ToLower(Input("  Import Rng? (y/n) ")) == "y" {
+
+		Check(os.MkdirAll(pack_name+"/data/"+pack_namespace+"/function"+_s+"/rng", 0755))
+
+		AppendFile(pack_name+"/data/"+pack_namespace+"/function"+_s+"/load.mcfunction", "\n\nfunction "+pack_namespace+":rng/setup")
+
+		makePackTemplate("data/"+pack_namespace+"/function"+_s+"/rng/lcg.mcfunction", "rng/lcg.mcfunction")
+		makePackTemplate("data/"+pack_namespace+"/function"+_s+"/rng/next_int_lcg.mcfunction", "rng/next_int_lcg.mcfunction")
+		makePackTemplate("data/"+pack_namespace+"/function"+_s+"/rng/range_lcg.mcfunction", "rng/range_lcg.mcfunction")
+		makePackTemplate("data/"+pack_namespace+"/function"+_s+"/rng/setup.mcfunction", "rng/setup.mcfunction")
+
+		uuid_reset := fillTemplate(getTemplate("rng/uuid_reset.mcfunction"))
+		if pack_ver < 6 { // uuid reset source (super)legacy support
+			uuid_reset = s.Replace(uuid_reset, "UUID[0] 1", "UUIDMost 0.00000000023283064365386962890625", 1)
+		}
+		Check(os.WriteFile(pack_name+"/"+"data/"+pack_namespace+"/function"+_s+"/rng/uuid_reset.mcfunction", []byte(uuid_reset), 0644))
+	}
+
+	// --- Done!
+	fmt.Print("\n  Done!\n")
 
 	// for compilation
-	// fmt.Scanf("%s")
+	fmt.Scanf("%s")
 }
 
-// Get pack format from "version" (MC or format)
-func getVer() (version int) {
-	ver := Input("  Version: ")
+// Prompt pack format from "version" (MC or format)
+func getVer(ver string) (version int) {
 
 	// basic format number
 	_, err := fmt.Sscanf(ver, "%d ", &version)
@@ -87,6 +149,13 @@ func getVer() (version int) {
 		}[minor*100+patch]
 		return version
 	}
-
+	// else latest
+	fmt.Println(" Invalid version! Selecting latest.")
 	return 81
+}
+
+func Check(err error) {
+	if err != nil {
+		panic(err)
+	}
 }

@@ -1,19 +1,22 @@
 package main
 
-import "fmt"
+import (
+	"bufio"
+	"fmt"
+	"os"
+	s "strings"
+)
 
-func InputType[T any](prefix string, vartype string) (out T) {
+// Read standard in text until a newline Python style
+func Input(prefix string) (input string) {
 
 	fmt.Print(prefix)
 
-	_, err := fmt.Scanf(vartype+"\n", &out)
-	if err != nil && err.Error() != "unexpected newline" {
+	reader := bufio.NewReader(os.Stdin)
+	text, err := reader.ReadString('\n')
+	if err != nil {
 		panic(err)
 	}
-	return out
-}
 
-func Input(prefix string) (out string) {
-
-	return fmt.Sprint(InputType[string](prefix, "%s"))
+	return s.TrimRight(text, "\r\n")
 }
